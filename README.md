@@ -82,7 +82,7 @@ Objects.requireNonNull()메서드를 통해 null 체크가 가능하다. 놀랍�
 @Repository
 public class MemberRepository {
     final private NamedParameterJdbcTemplate namedParameterJdbcTemplate;
-    public Member save(Member member) {
+public Member save(Member member) {
         /*
             member id를 보고 갱신 또는 삽입을 정함
             반환값은 id를 담아서 반환한다.
@@ -93,7 +93,28 @@ public class MemberRepository {
         return update(member);
     }
 
-    private Member insert(Member member) {
+public Optional<Member> findById(Long id) {
+        /*
+            select *
+            from member
+            where id = : id
+        */
+        var sql = String.format("SELECT * FROM %s WHERE id = :id", TABLE);
+        var param = new MapSqlParameterSource() // SqlParameterSource 인터페이스를 구현한 이 구현체는 java.util.Map를 생각하면 편하다.
+                .addValue("id", id);
+        RowMapper<Member> rowMapper = (ResultSet resultSet, int rowNum) -> Member.builder()
+                .id(resultSet.getLong("id"))
+                .email(resultSet.getString("email"))
+                .nickname(resultSet.getString("nickname"))
+                .birthday(resultSet.getObject("birthday" , LocalDate.class))
+                .createdAt(resultSet.getObject("createdAt", LocalDateTime.class))
+                .build();
+        var member = namedParameterJdbcTemplate.queryForObject(sql, param, rowMapper);
+        return Optional.ofNullable(member);
+    }
+
+
+private Member insert(Member member) {
         SimpleJdbcInsert simpleJdbcInsert = new SimpleJdbcInsert(namedParameterJdbcTemplate.getJdbcTemplate())
                 .withTableName("member") // ()에 테이블 이름 지정
                 .usingGeneratedKeyColumns("id"); // ()에 GeneratedKey로 사용할 컬럼 지정
@@ -148,3 +169,28 @@ public class MemberWriteService {
 ```
 
 record 클래스를 사용했기 때문에 command.get변수 이 아니라 command.변수임을 확인할 수 있다. 
+
+### service.MemberReadService
+회원을 조회하는 기능 추가 
+
+```
+@RequiredArgsConstructor
+@Service
+public class MemberReadService {
+    final private MemberRepository memberRepository;
+
+    public MemberDto getMember(Long id) {
+        var member = memberRepository.findById(id).orElseThrow();
+
+        return toDto(member);
+
+    }
+
+    public MemberDto toDto(Member member) {
+        return new MemberDto(member.getId(), member.getEmail(), member.getNickname(),member.getBirthday());
+    }
+}
+```
+
+entity 클래스를 presentation layer 까지 가지고 올라가는 것은 여러가지 부작용을 초래할 수 있기 때문에 DTO 형태로 묶어주는 메서드를 추가 해 주었다.
+
